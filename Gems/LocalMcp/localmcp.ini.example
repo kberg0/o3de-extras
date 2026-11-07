@@ -1,0 +1,17 @@
+; Copy outside the gem, then set /O3DE/Gems/LocalMcp/ConfigFile to its path.
+Enabled=true
+Port=4600
+Auth=none
+
+; Auth=basic
+; Username="developer"
+; Password="replace-me"
+
+; Auth=mtls
+; Certificate="C:/certs/server.pem"
+; PrivateKey="C:/certs/server.key"
+; CA="C:/certs/client-ca.pem"
+
+# Optional history capacity and connection idle deadline (milliseconds).
+LogLines=512
+IdleTimeoutMs=10000

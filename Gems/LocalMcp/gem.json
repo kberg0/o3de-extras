@@ -1,0 +1,11 @@
+{
+    "gem_name": "LocalMcp",
+    "version": "0.1.0",
+    "display_name": "Local MCP Console",
+    "license": "Apache-2.0 Or MIT",
+    "type": "Code",
+    "summary": "Local MCP access to the AZ console and logs using AzNetworking.",
+    "canonical_tags": ["Gem"],
+    "user_tags": ["Debug", "Tools"],
+    "dependencies": []
+}
