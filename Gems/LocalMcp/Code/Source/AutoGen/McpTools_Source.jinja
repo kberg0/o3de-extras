@@ -1,0 +1,308 @@
+{#
+    Generates the schemas and argument parsers of one McpTools XML file. Param Type and the attributes it takes:
+      string       MinLength; MaxLength (default MaxStringArgumentLength); Enum, a comma-separated list; Pattern, an ECMAScript
+                   regex that contains no quote or backslash.
+      integer      Min; Max. The value is unsigned.
+      boolean
+      stringArray  MaxItems (required); MinItems; UniqueItems="true"; MaxLength and Pattern of each item.
+      object       Nested Param elements describe its members; AdditionalProperties="false" refuses any other member.
+      array        MinItems; MaxItems; Items="object" or Items="number" (the items are not checked when Items is left out).
+      any          Any JSON value; MaxLength bounds it when it is a string.
+    Every Param takes Required="true" and a Description. AdditionalProperties="false" on McpTools refuses unknown arguments.
+#}
+{% macro MaxLength(node) -%}
+{{ node.attrib.get('MaxLength', 'MaxStringArgumentLength') }}
+{%- endmacro %}
+{% macro MemberName(param) -%}
+{%   set words = param.attrib['Name'].split('_') -%}
+m_{{ words[0] }}{% for word in words[1:] %}{{ word[0]|upper }}{{ word[1:] }}{% endfor %}
+{%- endmacro %}
+{% macro JsonType(param) -%}
+{%   if param.attrib['Type'] == 'stringArray' -%}
+array
+{%-  else -%}
+{{ param.attrib['Type'] }}
+{%-  endif %}
+{%- endmacro %}
+{% macro Properties(node, closed) -%}
+{%   set params = node.findall('Param') -%}
+{%   set required = params|selectattr('attrib.Required', 'equalto', 'true')|map(attribute='attrib.Name')|list -%}
+"properties":{ {%- for param in params %}"{{ param.attrib['Name'] }}":{{ Schema(param) }}{{ "," if not loop.last }}{% endfor %}}
+{%-  if required %},"required":{{ required|tojson }}{% endif %}
+{%-  if closed %},"additionalProperties":false{% endif %}
+{%- endmacro %}
+{% macro Schema(param) -%}
+{%   set type = param.attrib['Type'] -%}
+{%   if type == 'any' -%}
+{%     set fields = [] -%}
+{%     if param.attrib.get('Description') %}{% do fields.append('"description":' ~ param.attrib['Description']|tojson) %}{% endif -%}
+{%     if param.attrib.get('MaxLength') %}{% do fields.append('"maxLength":' ~ param.attrib['MaxLength']) %}{% endif -%}
+{ {{- fields|join(',') -}} }
+{%-  else -%}
+{"type":"{{ JsonType(param) }}"
+{%-    if param.attrib.get('Description') %},"description":{{ param.attrib['Description']|tojson }}{% endif %}
+{%-    if type == 'string' %}
+{%-      if param.attrib.get('MinLength') %},"minLength":{{ param.attrib['MinLength'] }}{% endif %}
+{%-      if param.attrib.get('MaxLength') %},"maxLength":{{ param.attrib['MaxLength'] }}{% endif %}
+{%-      if param.attrib.get('Enum') %},"enum":{{ param.attrib['Enum'].split(',')|tojson }}{% endif %}
+{%-      if param.attrib.get('Pattern') %},"pattern":{{ param.attrib['Pattern']|tojson }}{% endif %}
+{%-    elif type == 'integer' %}
+{%-      if param.attrib.get('Min') %},"minimum":{{ param.attrib['Min'] }}{% endif %}
+{%-      if param.attrib.get('Max') %},"maximum":{{ param.attrib['Max'] }}{% endif %}
+{%-    elif type == 'stringArray' %}
+{%-      if param.attrib.get('MinItems') %},"minItems":{{ param.attrib['MinItems'] }}{% endif %},"maxItems":{{ param.attrib['MaxItems'] }}
+{%-      if param.attrib.get('UniqueItems') == 'true' %},"uniqueItems":true{% endif %},"items":{"type":"string"
+{%-      if param.attrib.get('MaxLength') %},"maxLength":{{ param.attrib['MaxLength'] }}{% endif %}
+{%-      if param.attrib.get('Pattern') %},"pattern":{{ param.attrib['Pattern']|tojson }}{% endif %}}
+{%-    elif type == 'object' %}
+{%-      if param.findall('Param') %},{{ Properties(param, param.attrib.get('AdditionalProperties') == 'false') }}{% endif %}
+{%-    elif type == 'array' %}
+{%-      if param.attrib.get('MinItems') %},"minItems":{{ param.attrib['MinItems'] }}{% endif %}
+{%-      if param.attrib.get('MaxItems') %},"maxItems":{{ param.attrib['MaxItems'] }}{% endif %}
+{%-      if param.attrib.get('Items') %},"items":{"type":"{{ param.attrib['Items'] }}"}{% endif %}
+{%-    endif %}}
+{%-  endif %}
+{%- endmacro %}
+{% macro ItemBounds(param, noun) -%}
+{%   if param.attrib.get('MinItems') and param.attrib.get('MaxItems') -%}
+{{ ' of ' ~ param.attrib['MinItems'] ~ ' to ' ~ param.attrib['MaxItems'] ~ ' ' ~ noun }}
+{%-  elif param.attrib.get('MaxItems') -%}
+{{ ' of at most ' ~ param.attrib['MaxItems'] ~ ' ' ~ noun }}
+{%-  elif param.attrib.get('MinItems') -%}
+{{ ' of at least ' ~ param.attrib['MinItems'] ~ ' ' ~ noun }}
+{%-  endif %}
+{%- endmacro %}
+{% macro UnknownMembers(node, value, prefix) -%}
+{%   set names = node.findall('Param')|map(attribute='attrib.Name')|list %}
+{%   if names %}
+for (auto member = {{ value }}.MemberBegin(); member != {{ value }}.MemberEnd(); ++member)
+{
+    const AZStd::string_view name(member->name.GetString(), member->name.GetStringLength());
+    if (!IsOneOf(name, { {% for name in names %}"{{ name }}"{{ ", " if not loop.last }}{% endfor %} }))
+    {
+{%     if prefix %}
+        return AZ::Failure("{{ prefix }}" + AZStd::string(name.data(), name.size()) + ": unexpected member");
+{%     else %}
+        return AZ::Failure(AZStd::string(name.data(), name.size()) + ": unexpected argument");
+{%     endif %}
+    }
+}
+{%   else %}
+if ({{ value }}.MemberCount() != 0)
+{
+    return AZ::Failure(AZStd::string("{{ prefix }}expected no arguments"));
+}
+{%   endif %}
+{%- endmacro %}
+{#
+    Checks the JSON value named value against param, failing with messages that start with label.
+    When target is set, the checked value is then stored into it.
+#}
+{% macro Check(param, value, label, target) -%}
+{%   set type = param.attrib['Type'] %}
+{%   if type == 'string' %}
+if (!IsBoundedString({{ value }}, {{ param.attrib.get('MinLength', '0') }}, {{ MaxLength(param) }}))
+{
+    return AZ::Failure(AZStd::string("{{ label }}: expected a string{% if param.attrib.get('MaxLength') %} of {{ param.attrib.get('MinLength', '0') }} to {{ param.attrib['MaxLength'] }} bytes{% endif %}"));
+}
+{%     if param.attrib.get('Enum') %}
+if (!IsOneOf({{ value }}.GetString(), { {% for option in param.attrib['Enum'].split(',') %}"{{ option }}"{{ ", " if not loop.last }}{% endfor %} }))
+{
+    return AZ::Failure(AZStd::string("{{ label }}: expected one of {{ param.attrib['Enum'].replace(',', ', ') }}"));
+}
+{%     endif %}
+{%     if param.attrib.get('Pattern') %}
+if (!AZStd::regex_search({{ value }}.GetString(), AZStd::regex(R"({{ param.attrib['Pattern'] }})")))
+{
+    return AZ::Failure(AZStd::string("{{ label }}: expected a string matching {{ param.attrib['Pattern'] }}"));
+}
+{%     endif %}
+{%     if target %}
+{{ target }} = {{ value }}.GetString();
+{%     endif %}
+{%   elif type == 'integer' %}
+const bool inRange = {{ value }}.IsUint64()
+{%-    if param.attrib.get('Min', '0')|int > 0 %} && {{ value }}.GetUint64() >= {{ param.attrib['Min'] }}{% endif %}
+{%-    if param.attrib.get('Max') %} && {{ value }}.GetUint64() <= {{ param.attrib['Max'] }}{% endif %};
+if (!inRange)
+{
+    return AZ::Failure(AZStd::string("{{ label }}: expected an unsigned integer{% if param.attrib.get('Max') %} in [{{ param.attrib.get('Min', '0') }}, {{ param.attrib['Max'] }}]{% endif %}"));
+}
+{%     if target %}
+{{ target }} = {{ value }}.GetUint64();
+{%     endif %}
+{%   elif type == 'boolean' %}
+if (!{{ value }}.IsBool())
+{
+    return AZ::Failure(AZStd::string("{{ label }}: expected a boolean"));
+}
+{%     if target %}
+{{ target }} = {{ value }}.GetBool();
+{%     endif %}
+{%   elif type == 'stringArray' %}
+if (!{{ value }}.IsArray(){% if param.attrib.get('MinItems') %} || {{ value }}.Size() < {{ param.attrib['MinItems'] }}{% endif %} || {{ value }}.Size() > {{ param.attrib['MaxItems'] }})
+{
+    return AZ::Failure(AZStd::string("{{ label }}: expected an array{{ ItemBounds(param, 'strings') }}"));
+}
+{%     if param.attrib.get('Pattern') %}
+const AZStd::regex pattern(R"({{ param.attrib['Pattern'] }})");
+{%     endif %}
+{%     if param.attrib.get('UniqueItems') == 'true' %}
+AZStd::unordered_set<AZStd::string_view> seen;
+{%     endif %}
+{%     if target %}
+AZStd::vector<AZStd::string> items;
+{%     endif %}
+for (const Json& item : {{ value }}.GetArray())
+{
+    if (!IsBoundedString(item, 0, {{ MaxLength(param) }}))
+    {
+        return AZ::Failure(AZStd::string("{{ label }}: expected strings{% if param.attrib.get('MaxLength') %} of at most {{ param.attrib['MaxLength'] }} bytes{% endif %}"));
+    }
+{%     if param.attrib.get('Pattern') %}
+    if (!AZStd::regex_search(item.GetString(), pattern))
+    {
+        return AZ::Failure(AZStd::string("{{ label }}: expected strings matching {{ param.attrib['Pattern'] }}"));
+    }
+{%     endif %}
+{%     if param.attrib.get('UniqueItems') == 'true' %}
+    if (!seen.insert(AZStd::string_view(item.GetString(), item.GetStringLength())).second)
+    {
+        return AZ::Failure(AZStd::string("{{ label }}: expected unique strings"));
+    }
+{%     endif %}
+{%     if target %}
+    items.emplace_back(item.GetString());
+{%     endif %}
+}
+{%     if target %}
+{{ target }} = AZStd::move(items);
+{%     endif %}
+{%   elif type == 'object' %}
+if (!{{ value }}.IsObject())
+{
+    return AZ::Failure(AZStd::string("{{ label }}: expected an object"));
+}
+{%     if param.attrib.get('AdditionalProperties') == 'false' %}
+{{ UnknownMembers(param, value, label ~ '.').rstrip() }}
+{%     endif %}
+{%     for member in param.findall('Param') %}
+{%       set memberValue = value ~ 'Member' %}
+if ({{ value }}.HasMember("{{ member.attrib['Name'] }}"))
+{
+    const Json& {{ memberValue }} = {{ value }}["{{ member.attrib['Name'] }}"];
+{{ (Check(member, memberValue, label ~ '.' ~ member.attrib['Name'], none)|indent(4, true)).rstrip() }}
+}
+{%       if member.attrib.get('Required') == 'true' %}
+else
+{
+    return AZ::Failure(AZStd::string("{{ label }}.{{ member.attrib['Name'] }}: required"));
+}
+{%       endif %}
+{%     endfor %}
+{%     if target %}
+{{ target }} = &{{ value }};
+{%     endif %}
+{%   elif type == 'array' %}
+if (!{{ value }}.IsArray(){% if param.attrib.get('MinItems') %} || {{ value }}.Size() < {{ param.attrib['MinItems'] }}{% endif %}{% if param.attrib.get('MaxItems') %} || {{ value }}.Size() > {{ param.attrib['MaxItems'] }}{% endif %})
+{
+    return AZ::Failure(AZStd::string("{{ label }}: expected an array{{ ItemBounds(param, 'items') }}"));
+}
+{%     if param.attrib.get('Items') %}
+for (const Json& item : {{ value }}.GetArray())
+{
+    if (!item.Is{{ param.attrib['Items']|capitalize }}())
+    {
+        return AZ::Failure(AZStd::string("{{ label }}: expected {{ param.attrib['Items'] }} items"));
+    }
+}
+{%     endif %}
+{%     if target %}
+{{ target }} = &{{ value }};
+{%     endif %}
+{%   elif type == 'any' %}
+{%     if param.attrib.get('MaxLength') %}
+if ({{ value }}.IsString() && !IsBoundedString({{ value }}, 0, {{ param.attrib['MaxLength'] }}))
+{
+    return AZ::Failure(AZStd::string("{{ label }}: expected a string of at most {{ param.attrib['MaxLength'] }} bytes"));
+}
+{%     endif %}
+{%     if target %}
+{{ target }} = &{{ value }};
+{%     endif %}
+{%   endif %}
+{%- endmacro %}
+#include "{{ (outputFile|basename).replace(".McpTools.cpp", ".McpTools.h") }}"
+
+#include <AzCore/std/containers/unordered_set.h>
+#include <AzCore/std/string/regex.h>
+#include <AzCore/std/utils.h>
+
+{% for xml in dataFiles %}
+{%   set setName = xml.attrib['Name'] %}
+{%   set closed = xml.attrib.get('AdditionalProperties') == 'false' %}
+namespace LocalMcp
+{
+    const char* const {{ setName }}Schemas = R"json({"tools":[
+{%   for tool in xml.findall('Tool') %}
+{"name":"{{ tool.attrib['Name'] }}","description":{{ tool.attrib['Description']|tojson }},"inputSchema":{"type":"object",{{ Properties(tool, closed) }}}}{{ "," if not loop.last }}
+{%   endfor %}
+]})json";
+{%   for tool in xml.findall('Tool') %}
+{%     set argsType = tool.attrib['HandlerName'] ~ 'Args' %}
+
+    AZ::Outcome<{{ argsType }}, AZStd::string> {{ argsType }}::Parse(const Json& args)
+    {
+        if (!args.IsObject())
+        {
+            return AZ::Failure(AZStd::string("expected object arguments"));
+        }
+{%     if closed %}
+{{ (UnknownMembers(tool, 'args', '')|indent(8, true)).rstrip() }}
+{%     endif %}
+
+        {{ argsType }} result;
+{%     for param in tool.findall('Param') %}
+{%       set name = param.attrib['Name'] %}
+
+        if (args.HasMember("{{ name }}"))
+        {
+            const Json& value = args["{{ name }}"];
+{{ (Check(param, 'value', name, 'result.' ~ MemberName(param))|indent(12, true)).rstrip() }}
+        }
+{%       if param.attrib.get('Required') == 'true' %}
+        else
+        {
+            return AZ::Failure(AZStd::string("{{ name }}: required"));
+        }
+{%       endif %}
+{%     endfor %}
+
+        return AZ::Success(AZStd::move(result));
+    }
+{%   endfor %}
+
+    ToolProvider::Result {{ setName }}Handler::Dispatch(AZStd::string_view name, const Json& args, ToolCall& call)
+    {
+{%   for tool in xml.findall('Tool') %}
+{%     set handlerName = tool.attrib['HandlerName'] %}
+        if (name == {{ handlerName }}Tool)
+        {
+            auto parsed = {{ handlerName }}Args::Parse(args);
+            if (!parsed.IsSuccess())
+            {
+                call.m_error = parsed.TakeError();
+                return ToolProvider::Result::InvalidArguments;
+            }
+            if (!Handle{{ handlerName }}(parsed.GetValue(), call))
+            {
+                return ToolProvider::Result::InvalidArguments;
+            }
+            return call.m_pending ? ToolProvider::Result::Pending : ToolProvider::Result::Complete;
+        }
+
+{%   endfor %}
+        return ToolProvider::Result::Unknown;
+    }
+} // namespace LocalMcp
+{% endfor %}

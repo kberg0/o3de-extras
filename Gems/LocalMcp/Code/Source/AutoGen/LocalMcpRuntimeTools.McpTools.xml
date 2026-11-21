@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    Runtime MCP tools. McpTools_Header.jinja and McpTools_Source.jinja generate from this file:
+    the tool name constants, the tools/list schemas, a typed Args struct per tool whose Parse() enforces every bound below,
+    and RuntimeToolsHandler, whose Handle<HandlerName>() functions the Server implements.
+    McpTools_Source.jinja lists the Param types and the attributes each type takes.
+-->
+<McpTools Name="RuntimeTools">
+    <Tool Name="console_complete" HandlerName="ConsoleComplete"
+          Description="List AZ cvars/commands, or autocomplete a command including arguments.">
+        <Param Name="prefix" Type="string" MaxLength="256"/>
+    </Tool>
+
+    <Tool Name="console_execute" HandlerName="ConsoleExecute"
+          Description="Execute an AZ console command or read/set a cvar. Runs on the main thread.">
+        <Param Name="command" Type="string" Required="true" MaxLength="4096"/>
+        <Param Name="output" Type="string" Enum="none,capture"/>
+        <Param Name="grep" Type="string" MaxLength="2048"/>
+    </Tool>
+
+    <Tool Name="logs_tail" HandlerName="LogsTail"
+          Description="Read buffered engine logs. Poll with the returned next cursor as after; dropped reports overwritten lines.">
+        <Param Name="after" Type="integer" Min="0"/>
+        <Param Name="limit" Type="integer" Min="1" Max="128"/>
+        <Param Name="pattern" Type="string" MaxLength="2048"/>
+        <Param Name="regex" Type="boolean"/>
+        <Param Name="windows" Type="stringArray" MaxItems="128" MaxLength="128"/>
+        <Param Name="excludeWindows" Type="stringArray" MaxItems="128" MaxLength="128"/>
+        <Param Name="level" Type="string" Enum="error,warning,info"/>
+        <Param Name="fields" Type="string" Enum="message,compact"/>
+        <Param Name="collapse" Type="boolean"/>
+        <Param Name="summary" Type="boolean"/>
+        <Param Name="fromStart" Type="boolean"/>
+        <Param Name="tags" Type="stringArray" MaxItems="128" MaxLength="256"/>
+    </Tool>
+
+    <Tool Name="log_tag" HandlerName="LogTag"
+          Description="Enable or disable an AZLOG tag, or query it by omitting enabled.">
+        <Param Name="tag" Type="string" Required="true" MinLength="1" MaxLength="256"/>
+        <Param Name="enabled" Type="boolean"/>
+    </Tool>
+
+    <Tool Name="console_search" HandlerName="ConsoleSearch"
+          Description="Rank visible commands/cvars by name and help words or name subsequence.">
+        <Param Name="query" Type="string" Required="true" MaxLength="256"/>
+        <Param Name="kind" Type="string" Enum="command,cvar"/>
+        <Param Name="limit" Type="integer" Min="1" Max="100"/>
+        <Param Name="after" Type="integer" Min="0"/>
+        <Param Name="fields" Type="string" Enum="name"/>
+    </Tool>
+
+    <Tool Name="logs_sources" HandlerName="LogsSources"
+          Description="Trace windows since listener startup, lifetime/ring counts, Unix lastTimeMs and lifetime level counts."/>
+
+    <Tool Name="logs_wait" HandlerName="LogsWait"
+          Description="Hold for first log pattern match without blocking the engine. timeoutMs must be at least 100 ms below IdleTimeoutMs.">
+        <Param Name="pattern" Type="string" Required="true" MaxLength="2048"/>
+        <Param Name="after" Type="integer" Min="0"/>
+        <Param Name="timeoutMs" Type="integer" Min="0"/>
+        <Param Name="windows" Type="stringArray" MaxItems="128" MaxLength="128"/>
+    </Tool>
+
+    <Tool Name="log_tags" HandlerName="LogTags"
+          Description="List registered AZLOG tag names and their enabled states."/>
+</McpTools>

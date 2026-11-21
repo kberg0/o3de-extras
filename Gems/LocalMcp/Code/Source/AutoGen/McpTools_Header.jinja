@@ -1,0 +1,78 @@
+{% macro CppType(param) -%}
+{%   if param.attrib['Type'] == 'string' -%}
+AZStd::string
+{%-  elif param.attrib['Type'] == 'integer' -%}
+uint64_t
+{%-  elif param.attrib['Type'] == 'boolean' -%}
+bool
+{%-  else -%}
+AZStd::vector<AZStd::string>
+{%-  endif %}
+{%- endmacro %}
+{% macro MemberName(param) -%}
+{%   set words = param.attrib['Name'].split('_') -%}
+m_{{ words[0] }}{% for word in words[1:] %}{{ word[0]|upper }}{{ word[1:] }}{% endfor %}
+{%- endmacro %}
+#pragma once
+
+#include "LocalMcpJson.h"
+#include "LocalMcpToolProvider.h"
+
+#include <AzCore/Outcome/Outcome.h>
+#include <AzCore/std/containers/vector.h>
+#include <AzCore/std/optional.h>
+#include <AzCore/std/string/string.h>
+#include <AzCore/std/string/string_view.h>
+
+{% for xml in dataFiles %}
+{%   set setName = xml.attrib['Name'] %}
+namespace LocalMcp
+{
+    // {{ setName }} tool names
+{%   for tool in xml.findall('Tool') %}
+    inline constexpr AZStd::string_view {{ tool.attrib['HandlerName'] }}Tool = "{{ tool.attrib['Name'] }}";
+{%   endfor %}
+
+    //! tools/list reply listing the {{ setName }}.
+    extern const char* const {{ setName }}Schemas;
+{%   for tool in xml.findall('Tool') %}
+
+    //! Arguments of {{ tool.attrib['Name'] }}. Optional arguments the request leaves out are empty.
+{%     if tool.findall('Param')|selectattr('attrib.Type', 'in', ['object', 'array', 'any'])|list %}
+    //! Object, array and free-form arguments point into the parsed request, which must outlive this struct.
+{%     endif %}
+    struct {{ tool.attrib['HandlerName'] }}Args
+    {
+{%     for param in tool.findall('Param') %}
+{%       if param.attrib['Type'] in ['object', 'array', 'any'] %}
+        const Json* {{ MemberName(param) }} = nullptr;
+{%       elif param.attrib.get('Required') == 'true' %}
+        {{ CppType(param) }} {{ MemberName(param) }}{};
+{%       else %}
+        AZStd::optional<{{ CppType(param) }}> {{ MemberName(param) }};
+{%       endif %}
+{%     endfor %}
+
+        //! Reads args and checks every argument against its schema bounds; the error names the first bad argument.
+        static AZ::Outcome<{{ tool.attrib['HandlerName'] }}Args, AZStd::string> Parse(const Json& args);
+    };
+{%   endfor %}
+
+    //! Implemented by the owner of the {{ setName }}. Dispatch() parses a call's arguments and runs the matching handler.
+    class {{ setName }}Handler
+    {
+    public:
+        virtual ~{{ setName }}Handler() = default;
+
+        //! Returns Unknown when name is not one of the {{ setName }}, InvalidArguments with call.m_error set when the
+        //! arguments fail to parse or the handler rejects them, Pending when the handler sets call.m_pending, and Complete otherwise.
+        ToolProvider::Result Dispatch(AZStd::string_view name, const Json& args, ToolCall& call);
+
+    protected:
+        // Each handler returns false with call.m_error set when an argument fails a check the schema cannot express.
+{%   for tool in xml.findall('Tool') %}
+        virtual bool Handle{{ tool.attrib['HandlerName'] }}(const {{ tool.attrib['HandlerName'] }}Args& args, ToolCall& call) = 0;
+{%   endfor %}
+    };
+} // namespace LocalMcp
+{% endfor %}
