@@ -7,7 +7,8 @@ HTTP library, worker thread, or engine source changes.
 ## Enable and configure
 
 Enable `LocalMcp` in the desired project's `gem_names`, then reconfigure and build.
-The gem serves clients, servers and unified launchers, but not asset builders. It is **disabled by default**. Each process needs its own port.
+The gem serves clients, servers, unified launchers and editor/tools, but not asset
+builders. It is **disabled by default**. Each process needs its own port.
 
 Put this in your project's `Registry/localmcp.setreg`:
 
@@ -157,8 +158,9 @@ query/set tool is unchanged. Shutdown prints the ring retention audit before dis
 ## Engine support and source installation
 
 This source gem lives in **o3de-extras/Gems/LocalMcp**. It requires the O3DE
-engine change that lists AZLOG tags and exposes the current message's tag
-(o3de/o3de#20327).
+engine change that lists AZLOG tags (o3de/o3de#20327) and the editor automation changes
+listed in EDITOR.md.
+See [EDITOR.md](EDITOR.md) for the editor tools and supporting owner changes.
 
 Enable `LocalMcp` in your project's `gem_names` and add its absolute gem directory
 to the project's `external_subdirectories`, for example:
@@ -167,8 +169,11 @@ to the project's `external_subdirectories`, for example:
 "external_subdirectories": ["<o3de-extras>/Gems/LocalMcp"]
 ```
 
-The gem is disabled by default. It uses the engine's existing
-AzNetworking and OpenSSL targets; no additional libraries are fetched.
+The gem is disabled by default. Runtime console/log access does
+not enable the editor endpoint. It uses the engine's existing AzNetworking,
+OpenSSL, Qt and EditorPythonBindings targets, and Atom frame capture for editor viewport
+screenshots; no additional libraries are fetched.
 
 Tests cover JSON-RPC, cvar read/write/autocomplete, log cursors, fragmented HTTP,
 Host/Origin checks, basic authentication, mTLS certificates and cfg/ini settings.
+The editor tools, binding browsing, module tools, Python execution and screenshot arguments have native tests.

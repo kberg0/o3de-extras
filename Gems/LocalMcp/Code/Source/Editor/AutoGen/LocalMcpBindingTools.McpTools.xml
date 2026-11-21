@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    Reflected binding tools of the editor endpoint. The shared McpTools_Header.jinja and McpTools_Source.jinja generate from
+    this file: the tool name constants, the tools/list schemas, a typed Args struct per tool whose Parse() enforces every
+    bound below, and BindingToolsHandler, whose Handle<HandlerName>() functions BehaviorBridge implements.
+    McpTools_Source.jinja lists the Param types and the attributes each type takes.
+    The kind enum lists the names of Bindings::Kind.
+-->
+<McpTools Name="BindingTools">
+    <Tool Name="binding_search" HandlerName="BindingSearch"
+          Description="Ranked reflected binding discovery, including unavailable entries and their reasons.">
+        <Param Name="query" Type="string" Required="true" MaxLength="512"/>
+        <Param Name="kind" Type="string" Enum="Class,Method,Property,Bus,Event,BusProperty"/>
+        <Param Name="module" Type="string" MinLength="1" MaxLength="256" Description="Only bindings in this module or its sub-modules, e.g. editor or scriptcanvas.automation."/>
+        <Param Name="limit" Type="integer" Min="1" Max="100"/>
+        <Param Name="after" Type="integer" Min="0" Max="4294967295"/>
+    </Tool>
+
+    <Tool Name="binding_browse" HandlerName="BindingBrowse"
+          Description="Browse editor automation bindings by module, then class or bus, then member. Each child reports its kind, tooltip and child count.">
+        <Param Name="path" Type="string" MaxLength="2048" Description="Dotted path of the level to list, e.g. scriptcanvas.automation.GraphAutomationRequestBus; empty lists the top-level modules."/>
+        <Param Name="limit" Type="integer" Min="1" Max="100"/>
+        <Param Name="after" Type="integer" Min="0" Max="4294967295"/>
+    </Tool>
+
+    <Tool Name="binding_open_module" HandlerName="BindingOpenModule"
+          Description="Add a typed tool to tools/list for every callable binding in a module and its sub-modules. Calls behave as binding_call.">
+        <Param Name="module" Type="string" Required="true" MinLength="1" MaxLength="256"/>
+    </Tool>
+
+    <Tool Name="binding_close_module" HandlerName="BindingCloseModule"
+          Description="Remove the typed tools of an open module from tools/list.">
+        <Param Name="module" Type="string" Required="true" MinLength="1" MaxLength="256"/>
+    </Tool>
+
+    <Tool Name="binding_describe" HandlerName="BindingDescribe"
+          Description="Describe native signatures, defaults, types, scope and synchronous senders.">
+        <Param Name="binding" Type="string" Required="true" MinLength="1" MaxLength="2048"/>
+    </Tool>
+
+    <Tool Name="binding_call" HandlerName="BindingCall"
+          Description="Invoke one reflected overload or construct a class. Native calls are not generally undoable; failures report whether a call completed.">
+        <Param Name="binding" Type="string" Required="true" MinLength="1" MaxLength="2048"/>
+        <Param Name="overload" Type="integer" Min="0" Max="4294967295"/>
+        <Param Name="target" Type="object">
+            <Param Name="$handle" Type="string" Required="true" MaxLength="128"/>
+        </Param>
+        <Param Name="address" Type="any"/>
+        <Param Name="args" Type="array" Required="true" MaxItems="32"/>
+    </Tool>
+
+    <Tool Name="binding_get" HandlerName="BindingGet"
+          Description="Read a reflected property.">
+        <Param Name="binding" Type="string" Required="true" MinLength="1" MaxLength="2048"/>
+        <Param Name="overload" Type="integer" Min="0" Max="4294967295"/>
+        <Param Name="target" Type="object">
+            <Param Name="$handle" Type="string" Required="true" MaxLength="128"/>
+        </Param>
+    </Tool>
+
+    <Tool Name="binding_set" HandlerName="BindingSet"
+          Description="Set a reflected property. General binding writes do not supply editor undo semantics.">
+        <Param Name="binding" Type="string" Required="true" MinLength="1" MaxLength="2048"/>
+        <Param Name="overload" Type="integer" Min="0" Max="4294967295"/>
+        <Param Name="target" Type="object">
+            <Param Name="$handle" Type="string" Required="true" MaxLength="128"/>
+        </Param>
+        <Param Name="value" Type="any" Required="true"/>
+    </Tool>
+
+    <Tool Name="binding_release" HandlerName="BindingRelease"
+          Description="Release process-local object handles; context/owner changes also invalidate them.">
+        <Param Name="handles" Type="stringArray" Required="true" MaxItems="256" MaxLength="128"/>
+    </Tool>
+</McpTools>

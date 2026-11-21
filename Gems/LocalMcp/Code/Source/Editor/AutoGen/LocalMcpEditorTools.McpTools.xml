@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    Editor MCP tools. The shared McpTools_Header.jinja and McpTools_Source.jinja generate from this file:
+    the tool name constants, the tools/list schemas, a typed Args struct per tool whose Parse() enforces every bound below,
+    and EditorToolsHandler, whose Handle<HandlerName>() functions EditorTools implements.
+    McpTools_Source.jinja lists the Param types and the attributes each type takes.
+    Every tool refuses arguments its schema does not list.
+    These tools add what a reflected binding call cannot: editor state guards, undo batches, waits for prefab propagation,
+    play mode or the Asset Processor, Python execution and screenshots. Everything else is reached through the binding tools.
+-->
+<McpTools Name="EditorTools" AdditionalProperties="false">
+    <Tool Name="editor_info" HandlerName="EditorInfo"
+          Description="Editor endpoint readiness and process kind."/>
+
+    <!-- Entities and components. -->
+    <Tool Name="entity_create" HandlerName="EntityCreate"
+          Description="Create in the focused prefab through its public API. Optional parent, Vector3 position and name.">
+        <Param Name="name" Type="string" MaxLength="256"/>
+        <Param Name="parent" Type="object"/>
+        <Param Name="position" Type="object"/>
+    </Tool>
+
+    <Tool Name="entity_delete" HandlerName="EntityDelete"
+          Description="Delete entities AND all descendants in their owning instance; never the level container.">
+        <Param Name="entities" Type="array" Items="object" Required="true" MinItems="1" MaxItems="128"/>
+    </Tool>
+
+    <Tool Name="entity_set_parent" HandlerName="EntitySetParent"
+          Description="Reparent through EditorEntityAPIBus, preserving prefab bookkeeping. Cycles are refused.">
+        <Param Name="entity" Type="object" Required="true"/>
+        <Param Name="parent" Type="object" Required="true"/>
+    </Tool>
+
+    <Tool Name="transform_set" HandlerName="TransformSet"
+          Description="Set a tagged Transform (translation, xyzw rotation, uniform scale) in explicit local/world space with native undo.">
+        <Param Name="entity" Type="object" Required="true"/>
+        <Param Name="space" Type="string" Required="true" Enum="local,world"/>
+        <Param Name="transform" Type="object" Required="true"/>
+    </Tool>
+
+    <Tool Name="component_add" HandlerName="ComponentAdd"
+          Description="Add component type UUIDs through native dependency/conflict handling, with undo.">
+        <Param Name="entity" Type="object" Required="true"/>
+        <Param Name="types" Type="stringArray" Required="true" MinItems="1" MaxItems="32"/>
+    </Tool>
+
+    <Tool Name="component_remove" HandlerName="ComponentRemove"
+          Description="Remove component instance pairs through the native composition API, with undo.">
+        <Param Name="components" Type="array" Items="object" Required="true" MinItems="1" MaxItems="128"/>
+    </Tool>
+
+    <Tool Name="component_set" HandlerName="ComponentSet"
+          Description="Set a native property-tree value with native notifications, dirty tracking and undo.">
+        <Param Name="component" Type="object" Required="true"/>
+        <Param Name="path" Type="string" Required="true" MaxLength="4096"/>
+        <Param Name="value" Type="any" Required="true" MaxLength="4096"/>
+    </Tool>
+
+    <!-- Documents. -->
+    <Tool Name="level_create" HandlerName="LevelCreate"
+          Description="Create project folder/name/name.prefab through the native new-level path, without dialogs. Disk creation is not undoable. Empty template creates a native empty level.">
+        <Param Name="path" Type="string" Required="true" MaxLength="4096"/>
+        <Param Name="template" Type="string" MaxLength="4096"/>
+        <Param Name="unsaved" Type="string" Enum="reject,save,discard"/>
+    </Tool>
+
+    <Tool Name="level_open" HandlerName="LevelOpen"
+          Description="Open a level without unattended save prompts; unsaved changes default to reject.">
+        <Param Name="path" Type="string" Required="true" MaxLength="4096"/>
+        <Param Name="unsaved" Type="string" Enum="reject,save,discard"/>
+    </Tool>
+
+    <Tool Name="level_save" HandlerName="LevelSave"
+          Description="Save the current level; report dirty prefab templates separately. Saving files is not undoable."/>
+
+    <Tool Name="prefab_create" HandlerName="PrefabCreate"
+          Description="Create a nested prefab in memory from entities, with native undo; save explicitly with prefab_save.">
+        <Param Name="entities" Type="array" Items="object" Required="true" MinItems="1" MaxItems="128"/>
+        <Param Name="path" Type="string" Required="true" MaxLength="4096"/>
+    </Tool>
+
+    <Tool Name="prefab_save" HandlerName="PrefabSave"
+          Description="Explicitly save the requested prefab template using its native public API; no disk rollback.">
+        <Param Name="path" Type="string" Required="true" MaxLength="4096"/>
+    </Tool>
+
+    <Tool Name="asset_import" HandlerName="AssetImport"
+          Description="Copy an absolute source into a new project asset-safe destination, wait for AP jobs and catalog products, return IDs or job errors. Never overwrites; copied files remain on failure/cancellation. Disk copying is not undoable.">
+        <Param Name="source_path" Type="string" Required="true" MinLength="1" MaxLength="4096"/>
+        <Param Name="dest_path" Type="string" Required="true" MinLength="1" MaxLength="4096"/>
+        <Param Name="timeout_ms" Type="integer" Min="1"/>
+    </Tool>
+
+    <!-- Editor state, play mode and undo. -->
+    <Tool Name="editor_play" HandlerName="EditorPlay"
+          Description="Request play in editor and wait for the actual mode transition."/>
+
+    <Tool Name="editor_stop" HandlerName="EditorStop"
+          Description="Stop play and wait for the editor mode transition."/>
+
+    <Tool Name="editor_state" HandlerName="EditorState"
+          Description="Read native document path/dirty/readiness, play mode, prefab focus/dirty paths and pending propagation."/>
+
+    <Tool Name="editor_undo" HandlerName="EditorUndo"
+          Description="Undo through the editor's existing undo stack, then wait for prefab propagation."/>
+
+    <Tool Name="editor_redo" HandlerName="EditorRedo"
+          Description="Redo through the editor's existing undo stack, then wait for prefab propagation."/>
+
+    <!-- Python and screenshots. -->
+    <Tool Name="python_execute" HandlerName="PythonExecute"
+          Description="Run Python in the editor's interpreter on the main thread, in a fresh namespace. Returns stdout, stderr and the traceback of an uncaught exception. Listed only when the PythonExecute setting enables it.">
+        <Param Name="code" Type="string" Required="true" MinLength="1" MaxLength="32768"/>
+        <Param Name="timeout_ms" Type="integer" Min="1" Description="Stops the code at its next Python line after this long; native calls are not interrupted. Defaults to the connection deadline."/>
+    </Tool>
+
+    <Tool Name="screenshot" HandlerName="Screenshot"
+          Description="Capture the editor viewport, a dock panel or the whole main window as a PNG image.">
+        <Param Name="target" Type="string" Required="true" Enum="viewport,panel,window"/>
+        <Param Name="panel" Type="string" MinLength="1" MaxLength="256" Description="View pane name for target=panel, e.g. Entity Inspector; an unknown name returns the available names."/>
+        <Param Name="position" Type="object" AdditionalProperties="false" Description="Viewport camera position, given together with look_at.">
+            <Param Name="$type" Type="string" Required="true" Enum="Vector3"/>
+            <Param Name="value" Type="array" Items="number" Required="true" MinItems="3" MaxItems="3"/>
+        </Param>
+        <Param Name="look_at" Type="object" AdditionalProperties="false" Description="Point the viewport camera looks at, given together with position.">
+            <Param Name="$type" Type="string" Required="true" Enum="Vector3"/>
+            <Param Name="value" Type="array" Items="number" Required="true" MinItems="3" MaxItems="3"/>
+        </Param>
+    </Tool>
+</McpTools>
